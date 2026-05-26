@@ -40,14 +40,21 @@ def main():
         "download.prompt_for_download": False,
     }
     chrome_options.add_experimental_option("prefs", prefs)
+    chrome_options.add_argument("--start-maximized")
 
     driver = webdriver.Chrome(service=Service(driver_path), options=chrome_options)
     wait = WebDriverWait(driver, 180)
+
+    # 每次页面加载后设置缩放为75%
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+        "source": "document.addEventListener('DOMContentLoaded', () => { document.body.style.zoom = '75%'; });"
+    })
 
     try:
         # 1. 登录
         print("[1/7] 打开登录页...")
         driver.get("https://xyt.etrading.cn/qytpframe/customframe4bid/login_TP")
+        driver.execute_script("document.body.style.zoom = '75%'")
 
         username_input = wait.until(EC.presence_of_element_located((By.ID, "txtUserName")))
         password_input = driver.find_element(By.ID, "txtPwd")
@@ -93,17 +100,20 @@ def main():
         # 3. 等待iframe出现
         print("[5/7] 等待看板加载...")
         wait.until(EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, 'iframe[src*="shujutongjinew"]')))
+        print("      已切入iframe")
 
         # 4. 记录已有文件，点击导出
         existing = set(glob.glob(os.path.join(DOWNLOAD_DIR, '*.xlsx')))
         print("[6/7] 点击导出订单...")
-        export_button = wait.until(EC.presence_of_element_located((By.ID, "btnExportOrder")))
+        export_button = wait.until(EC.visibility_of_element_located((By.ID, "btnExportOrder")))
         time.sleep(3)
         for _ in range(30):
             try:
-                export_button.click()
+                driver.execute_script("arguments[0].click();", export_button)
+                print("      导出按钮已点击")
                 break
-            except Exception:
+            except Exception as e:
+                print(f"      点击失败: {e}")
                 time.sleep(2)
 
         # 5. 等待新文件下载完成
