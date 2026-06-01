@@ -11,13 +11,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOWNLOAD_DIR = os.path.join(BASE_DIR, 'Data')
 
-# 使用已缓存的chromedriver，避免访问Google服务器被重置
-os.environ['WDM_SSL_VERIFY'] = '0'
-os.environ['WDM_LOCAL'] = '1'
-try:
-    driver_path = ChromeDriverManager().install()
-except Exception:
-    driver_path = r'C:\Users\32300\.wdm\drivers\chromedriver\win64\147.0.7727.117\chromedriver-win32\chromedriver.exe'
+# 直接使用本地已有的chromedriver，避免访问Google服务器被阻断
+driver_path = r'C:\Users\32300\.wdm\drivers\chromedriver\win64\147.0.7727.117\chromedriver-win32\chromedriver.exe'
 
 
 def wait_for_download(download_dir, existing_files, timeout=180):

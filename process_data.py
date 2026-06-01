@@ -87,6 +87,9 @@ def export_friday_xlsx(result):
         row += 1
         for stype, s in supplier.items():
             row = write_row(row, stype, s["order_count"], s["total_amount"])
+        s_total_count = sum(s["order_count"] for s in supplier.values())
+        s_total_amount = round(sum(s["total_amount"] for s in supplier.values()), 2)
+        row = write_row(row, "合计", s_total_count, s_total_amount, bold=True)
         row += 1
 
         # 专区表
@@ -188,6 +191,41 @@ def export_monday_xlsx(result):
             title += f"（{r['month']}）订单统计"
         row = write_section(row, title, r["zones"])
 
+    # 全量统计（含供应商类型 + 专区）
+    if "total_all" in result:
+        t = result["total_all"]
+        row = write_title(row, "全量统计")
+
+        # 供应商类型表
+        for col, val in enumerate(["供应商类型", "订单数", "销售金额（元）"], 1):
+            c = ws.cell(row=row, column=col, value=val)
+            c.font = header_font
+            c.border = thin_border
+        row += 1
+        for stype, s in t["supplier"].items():
+            row = write_row(row, stype, s["order_count"], s["total_amount"])
+        s_total_count = sum(s["order_count"] for s in t["supplier"].values())
+        s_total_amount = round(sum(s["total_amount"] for s in t["supplier"].values()), 2)
+        row = write_row(row, "合计", s_total_count, s_total_amount, bold=True)
+        row += 1
+
+        # 专区表
+        row = write_header(row)
+        data_start = row
+        for zone, s in t["zones"].items():
+            row = write_row(row, zone, s["order_count"], s["total_amount"])
+        data_end = row - 1
+        ws.cell(row=row, column=1, value="合计").font = Font(bold=True)
+        ws.cell(row=row, column=1).border = thin_border
+        ws.cell(row=row, column=2, value=f"=SUM(B{data_start}:B{data_end})")
+        ws.cell(row=row, column=2).border = thin_border
+        ws.cell(row=row, column=2).font = Font(bold=True)
+        ws.cell(row=row, column=3, value=f"=SUM(C{data_start}:C{data_end})")
+        ws.cell(row=row, column=3).border = thin_border
+        ws.cell(row=row, column=3).font = Font(bold=True)
+        ws.cell(row=row, column=3).number_format = '#,##0.00'
+        row += 2
+
     ws.column_dimensions['A'].width = 30
     ws.column_dimensions['B'].width = 12
     ws.column_dimensions['C'].width = 20
@@ -201,7 +239,7 @@ def process_monday():
     df = pd.read_excel(SOURCE_FILE)
     df['订单日期'] = pd.to_datetime(df['订单日期'])
 
-    today = datetime.now()
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     current_year = today.year
     current_month = today.month
 
@@ -213,8 +251,7 @@ def process_monday():
     days_since_monday = today.weekday()
     this_monday = today - timedelta(days=days_since_monday)
     last_monday = this_monday - timedelta(days=7)
-    last_sunday = this_monday - timedelta(days=1)
-    last_week_mask = (df['订单日期'] >= last_monday) & (df['订单日期'] <= last_sunday)
+    last_week_mask = (df['订单日期'] >= last_monday) & (df['订单日期'] < this_monday)
     last_week_data = df[last_week_mask]
 
     result = {
@@ -225,7 +262,7 @@ def process_monday():
             "zones": zone_stats(df)
         },
         "last_week": {
-            "range": f"{last_monday.strftime('%Y-%m-%d')} ~ {last_sunday.strftime('%Y-%m-%d')}",
+            "range": f"{last_monday.strftime('%Y-%m-%d')} ~ {(this_monday - timedelta(days=1)).strftime('%Y-%m-%d')}",
             "order_count": int(last_week_data['订单号'].nunique()),
             "total_amount": round(float(last_week_data['订单金额（元）'].sum()), 2),
             "zones": zone_stats(last_week_data)
@@ -235,6 +272,10 @@ def process_monday():
             "order_count": int(month_data['订单号'].nunique()),
             "total_amount": round(float(month_data['订单金额（元）'].sum()), 2),
             "zones": zone_stats(month_data)
+        },
+        "total_all": {
+            "supplier": supplier_stats(df),
+            "zones": zone_stats(df)
         }
     }
 
@@ -249,7 +290,312 @@ def process_monday():
         for zone, s in r["zones"].items():
             print(f"  {zone}: 订单数 {s['order_count']}, 销售额 {s['total_amount']}")
 
+    # 全量统计
+    if "total_all" in result:
+        t = result["total_all"]
+        print(f"\n全量:")
+        for stype, s in t["supplier"].items():
+            print(f"  {stype}: 订单数 {s['order_count']}, 销售额 {s['total_amount']}")
+        print(f"  专区统计:")
+        for zone, s in t["zones"].items():
+            print(f"    {zone}: 订单数 {s['order_count']}, 销售额 {s['total_amount']}")
+
     export_monday_xlsx(result)
+    return result
+
+
+def export_last_month_xlsx(result):
+    """将上月统计结果导出为xlsx"""
+    timestamp = datetime.now().strftime('%Y%m%d%H%M')
+    xlsx_path = os.path.join(RESULT_DIR, f'analysis_results_{timestamp}_LM.xlsx')
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "上月统计"
+
+    title_font = Font(bold=True, size=13)
+    header_font = Font(bold=True, size=11)
+    thin_border = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin')
+    )
+
+    def write_title(row, text):
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+        c = ws.cell(row=row, column=1, value=text)
+        c.font = title_font
+        c.alignment = Alignment(horizontal='center')
+        return row + 1
+
+    def write_header(row):
+        for col, val in enumerate(["专区", "订单数", "销售金额（元）"], 1):
+            c = ws.cell(row=row, column=col, value=val)
+            c.font = header_font
+            c.border = thin_border
+        return row + 1
+
+    def write_row(row, label, count, amount, bold=False):
+        c1 = ws.cell(row=row, column=1, value=label)
+        c2 = ws.cell(row=row, column=2, value=count)
+        c3 = ws.cell(row=row, column=3, value=amount)
+        c3.number_format = '#,##0.00'
+        for c in (c1, c2, c3):
+            c.border = thin_border
+            if bold:
+                c.font = Font(bold=True)
+        return row + 1
+
+    row = 1
+    month_label = result["month"]
+    row = write_title(row, f"{month_label} 订单统计")
+
+    # 供应商类型表
+    for col, val in enumerate(["供应商类型", "订单数", "销售金额（元）"], 1):
+        c = ws.cell(row=row, column=col, value=val)
+        c.font = header_font
+        c.border = thin_border
+    row += 1
+    for stype, s in result["supplier"].items():
+        row = write_row(row, stype, s["order_count"], s["total_amount"])
+    s_total_count = sum(s["order_count"] for s in result["supplier"].values())
+    s_total_amount = round(sum(s["total_amount"] for s in result["supplier"].values()), 2)
+    row = write_row(row, "合计", s_total_count, s_total_amount, bold=True)
+    row += 1
+
+    # 专区表
+    row = write_header(row)
+    data_start = row
+    for zone, s in result["zones"].items():
+        row = write_row(row, zone, s["order_count"], s["total_amount"])
+    data_end = row - 1
+    ws.cell(row=row, column=1, value="合计").font = Font(bold=True)
+    ws.cell(row=row, column=1).border = thin_border
+    ws.cell(row=row, column=2, value=f"=SUM(B{data_start}:B{data_end})")
+    ws.cell(row=row, column=2).border = thin_border
+    ws.cell(row=row, column=2).font = Font(bold=True)
+    ws.cell(row=row, column=3, value=f"=SUM(C{data_start}:C{data_end})")
+    ws.cell(row=row, column=3).border = thin_border
+    ws.cell(row=row, column=3).font = Font(bold=True)
+    ws.cell(row=row, column=3).number_format = '#,##0.00'
+
+    ws.column_dimensions['A'].width = 30
+    ws.column_dimensions['B'].width = 12
+    ws.column_dimensions['C'].width = 20
+
+    wb.save(xlsx_path)
+    print(f"Excel已保存: {xlsx_path}")
+
+
+def export_normal_xlsx(result):
+    """将综合统计结果导出为xlsx"""
+    timestamp = datetime.now().strftime('%Y%m%d%H%M')
+    xlsx_path = os.path.join(RESULT_DIR, f'analysis_results_{timestamp}_NM.xlsx')
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "综合统计"
+
+    title_font = Font(bold=True, size=13)
+    header_font = Font(bold=True, size=11)
+    thin_border = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin')
+    )
+
+    def write_title(row, text):
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+        c = ws.cell(row=row, column=1, value=text)
+        c.font = title_font
+        c.alignment = Alignment(horizontal='center')
+        return row + 1
+
+    def write_header(row):
+        for col, val in enumerate(["专区", "订单数", "销售金额（元）"], 1):
+            c = ws.cell(row=row, column=col, value=val)
+            c.font = header_font
+            c.border = thin_border
+        return row + 1
+
+    def write_row(row, label, count, amount, bold=False):
+        c1 = ws.cell(row=row, column=1, value=label)
+        c2 = ws.cell(row=row, column=2, value=count)
+        c3 = ws.cell(row=row, column=3, value=amount)
+        c3.number_format = '#,##0.00'
+        for c in (c1, c2, c3):
+            c.border = thin_border
+            if bold:
+                c.font = Font(bold=True)
+        return row + 1
+
+    def write_section(row, title, supplier, zones):
+        """写一个区块：标题 + 供应商表 + 专区表"""
+        row = write_title(row, title)
+
+        # 供应商类型表
+        for col, val in enumerate(["供应商类型", "订单数", "销售金额（元）"], 1):
+            c = ws.cell(row=row, column=col, value=val)
+            c.font = header_font
+            c.border = thin_border
+        row += 1
+        for stype, s in supplier.items():
+            row = write_row(row, stype, s["order_count"], s["total_amount"])
+        s_total_count = sum(s["order_count"] for s in supplier.values())
+        s_total_amount = round(sum(s["total_amount"] for s in supplier.values()), 2)
+        row = write_row(row, "合计", s_total_count, s_total_amount, bold=True)
+        row += 1
+
+        # 专区表
+        row = write_header(row)
+        data_start = row
+        for zone, s in zones.items():
+            row = write_row(row, zone, s["order_count"], s["total_amount"])
+        data_end = row - 1
+        ws.cell(row=row, column=1, value="合计").font = Font(bold=True)
+        ws.cell(row=row, column=1).border = thin_border
+        ws.cell(row=row, column=2, value=f"=SUM(B{data_start}:B{data_end})")
+        ws.cell(row=row, column=2).border = thin_border
+        ws.cell(row=row, column=2).font = Font(bold=True)
+        ws.cell(row=row, column=3, value=f"=SUM(C{data_start}:C{data_end})")
+        ws.cell(row=row, column=3).border = thin_border
+        ws.cell(row=row, column=3).font = Font(bold=True)
+        ws.cell(row=row, column=3).number_format = '#,##0.00'
+        return row + 2
+
+    row = 1
+    for label, key in [("上周", "last_week"), ("本周", "current_week"),
+                        ("上月", "last_month"), ("本月", "current_month"),
+                        ("全量", "total")]:
+        r = result[key]
+        title = label
+        if "range" in r:
+            title += f"（{r['range']}）"
+        elif "month" in r:
+            title += f"（{r['month']}）"
+        row = write_section(row, title, r["supplier"], r["zones"])
+
+    ws.column_dimensions['A'].width = 30
+    ws.column_dimensions['B'].width = 12
+    ws.column_dimensions['C'].width = 20
+
+    wb.save(xlsx_path)
+    print(f"Excel已保存: {xlsx_path}")
+
+
+def process_last_month():
+    """上月统计：分供应商类型 + 分专区"""
+    df = pd.read_excel(SOURCE_FILE)
+    df['订单日期'] = pd.to_datetime(df['订单日期'])
+
+    today = datetime.now()
+    # 上个月：如果当前是1月，上个月是去年12月
+    if today.month == 1:
+        last_year, last_month = today.year - 1, 12
+    else:
+        last_year, last_month = today.year, today.month - 1
+
+    mask = (df['订单日期'].dt.year == last_year) & (df['订单日期'].dt.month == last_month)
+    month_data = df[mask]
+
+    result = {
+        "type": "last_month",
+        "month": f"{last_year}-{last_month:02d}",
+        "order_count": int(month_data['订单号'].nunique()),
+        "total_amount": round(float(month_data['订单金额（元）'].sum()), 2),
+        "supplier": supplier_stats(month_data),
+        "zones": zone_stats(month_data)
+    }
+
+    print(f"{result['month']} 订单统计:")
+    print(f"  总订单数: {result['order_count']}, 总销售额: {result['total_amount']}")
+    print(f"  供应商类型:")
+    for stype, s in result["supplier"].items():
+        print(f"    {stype}: 订单数 {s['order_count']}, 销售额 {s['total_amount']}")
+    print(f"  专区统计:")
+    for zone, s in result["zones"].items():
+        print(f"    {zone}: 订单数 {s['order_count']}, 销售额 {s['total_amount']}")
+
+    export_last_month_xlsx(result)
+    return result
+
+
+def process_normal():
+    """综合统计：上周、本周、上月、本月、全量（均分供应商类型+分专区）"""
+    df = pd.read_excel(SOURCE_FILE)
+    df['订单日期'] = pd.to_datetime(df['订单日期'])
+
+    now = datetime.now()
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    current_year = today.year
+    current_month = today.month
+
+    # 本月
+    month_mask = (df['订单日期'].dt.year == current_year) & (df['订单日期'].dt.month == current_month)
+    month_data = df[month_mask]
+
+    # 上月
+    if current_month == 1:
+        last_year, last_month = current_year - 1, 12
+    else:
+        last_year, last_month = current_year, current_month - 1
+    last_month_mask = (df['订单日期'].dt.year == last_year) & (df['订单日期'].dt.month == last_month)
+    last_month_data = df[last_month_mask]
+
+    # 上周（上周一 ~ 上周日，完整7天）
+    days_since_monday = today.weekday()
+    this_monday = today - timedelta(days=days_since_monday)
+    last_monday = this_monday - timedelta(days=7)
+    last_week_mask = (df['订单日期'] >= last_monday) & (df['订单日期'] < this_monday)
+    last_week_data = df[last_week_mask]
+
+    # 本周（本周一 ~ 当前时刻，精确到秒）
+    current_week_mask = (df['订单日期'] >= this_monday) & (df['订单日期'] <= now)
+    current_week_data = df[current_week_mask]
+
+    result = {
+        "type": "normal",
+        "last_week": {
+            "range": f"{last_monday.strftime('%Y-%m-%d')} ~ {(this_monday - timedelta(days=1)).strftime('%Y-%m-%d')}",
+            "supplier": supplier_stats(last_week_data),
+            "zones": zone_stats(last_week_data)
+        },
+        "current_week": {
+            "range": f"{this_monday.strftime('%Y-%m-%d')} ~ {now.strftime('%Y-%m-%d %H:%M')}",
+            "supplier": supplier_stats(current_week_data),
+            "zones": zone_stats(current_week_data)
+        },
+        "last_month": {
+            "month": f"{last_year}-{last_month:02d}",
+            "supplier": supplier_stats(last_month_data),
+            "zones": zone_stats(last_month_data)
+        },
+        "current_month": {
+            "month": f"{current_year}-{current_month:02d}",
+            "supplier": supplier_stats(month_data),
+            "zones": zone_stats(month_data)
+        },
+        "total": {
+            "supplier": supplier_stats(df),
+            "zones": zone_stats(df)
+        }
+    }
+
+    for label, key in [("上周", "last_week"), ("本周", "current_week"),
+                        ("上月", "last_month"), ("本月", "current_month"),
+                        ("全量", "total")]:
+        r = result[key]
+        header = label
+        if "range" in r:
+            header += f"（{r['range']}）"
+        elif "month" in r:
+            header += f"（{r['month']}）"
+        total_count = sum(s["order_count"] for s in r["supplier"].values())
+        total_amount = round(sum(s["total_amount"] for s in r["supplier"].values()), 2)
+        print(f"\n{header}: 订单数 {total_count}, 销售额 {total_amount}")
+        for stype, s in r["supplier"].items():
+            print(f"  {stype}: 订单数 {s['order_count']}, 销售额 {s['total_amount']}")
+        print(f"  专区统计:")
+        for zone, s in r["zones"].items():
+            print(f"    {zone}: 订单数 {s['order_count']}, 销售额 {s['total_amount']}")
+
+    export_normal_xlsx(result)
     return result
 
 
@@ -258,15 +604,15 @@ def process_friday():
     df = pd.read_excel(SOURCE_FILE)
     df['订单日期'] = pd.to_datetime(df['订单日期'])
 
-    today = datetime.now()
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     current_year = today.year
     current_month = today.month
 
-    # 本周（周一到周日）
-    days_since_monday = today.weekday()
-    this_monday = today - timedelta(days=days_since_monday)
-    this_sunday = this_monday + timedelta(days=6)
-    week_mask = (df['订单日期'] >= this_monday) & (df['订单日期'] <= this_sunday)
+    # 本周（上周五到本周四）
+    days_since_friday = (today.weekday() - 4) % 7
+    this_friday = today - timedelta(days=days_since_friday)
+    last_friday = this_friday - timedelta(days=7)
+    week_mask = (df['订单日期'] >= last_friday) & (df['订单日期'] < this_friday)
     week_data = df[week_mask]
 
     # 本月
@@ -276,14 +622,14 @@ def process_friday():
     result = {
         "type": "friday",
         "current_week": {
-            "range": f"{this_monday.strftime('%Y-%m-%d')} ~ {this_sunday.strftime('%Y-%m-%d')}",
+            "range": f"{last_friday.strftime('%Y-%m-%d')} ~ {(this_friday - timedelta(days=1)).strftime('%Y-%m-%d')}",
             "order_count": int(week_data['订单号'].nunique()),
             "total_amount": round(float(week_data['订单金额（元）'].sum()), 2),
             "supplier": supplier_stats(week_data),
         },
         "zones": {
             "current_week": {
-                "range": f"{this_monday.strftime('%Y-%m-%d')} ~ {this_sunday.strftime('%Y-%m-%d')}",
+                "range": f"{last_friday.strftime('%Y-%m-%d')} ~ {(this_friday - timedelta(days=1)).strftime('%Y-%m-%d')}",
                 "supplier": supplier_stats(week_data),
                 **zone_stats(week_data)
             },
@@ -320,21 +666,30 @@ def process_friday():
 
 def process(mode="auto"):
     """
-    mode: "monday" | "friday" | "auto"
-      monday - 强制跑周一统计（上周/本月/总计 + 分专区）
-      friday - 强制跑周五统计（本周 + 供应商类型 + 分专区）
-      auto   - 根据今天是周几自动选择
+    mode: "monday" | "friday" | "last_month" | "normal" | "auto"
+      monday     - 强制跑周一统计（上周/本月/总计 + 分专区）
+      friday     - 强制跑周五统计（本周 + 供应商类型 + 分专区）
+      last_month - 上月统计（分供应商类型 + 分专区）
+      normal     - 综合统计（上周/本周/上月/本月/全量，均分供应商+专区）
+      auto       - 周一→monday，周五→friday，其他→normal
     """
     if mode == "monday":
         return process_monday()
     elif mode == "friday":
         return process_friday()
+    elif mode == "last_month":
+        return process_last_month()
+    elif mode == "normal":
+        return process_normal()
     else:
-        today = datetime.now()
-        if today.weekday() == 0:
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        weekday = today.weekday()
+        if weekday == 0:
             return process_monday()
-        else:
+        elif weekday == 4:
             return process_friday()
+        else:
+            return process_normal()
 
 
 if __name__ == "__main__":
