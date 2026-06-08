@@ -5,12 +5,15 @@
 
 ## 项目结构
 ```
-weekDataCount/
-├── workflow.py          # 主入口，串联导出和数据处理
-├── xyt_export.py        # 登录平台、导航、导出订单数据
-├── process_data.py      # 数据统计分析
+D:\skill\EpweekDataCount\
+├── workflow.py           # 主入口，串联导出和数据处理
+├── run_all_modes.py      # 全模式执行：运行4种模式 + 飞书通知 + 在线表格
+├── xyt_export.py         # 登录平台、导航、导出订单数据
+├── process_data.py       # 数据统计分析
+├── feishu_notify.py      # 飞书消息通知模块（从 feishu-notify 复制）
+├── spreadsheet_token.json # 在线表格 token（自动创建，复用）
 ├── Data/
-│   └── source_data.xlsx # 导出的原始订单数据
+│   └── source_data.xlsx  # 导出的原始订单数据
 └── result/
     └── analysis_results_{时间戳}_{M/F/LM/NM}.xlsx  # 统计结果（Excel）
 ```
@@ -79,17 +82,29 @@ weekDataCount/
 
 ## 执行命令
 ```bash
-cd D:\AutoWorkSkill\cronJob\weekDataCount
+cd D:\skill\EpweekDataCount
 
 # 自动运行（周一→周一统计，周五→周五统计，其他→综合统计）
-.venv\Scripts\python workflow.py
+python workflow.py
 
 # 手动指定模式
-.venv\Scripts\python workflow.py monday       # 强制周一统计
-.venv\Scripts\python workflow.py friday       # 强制周五统计
-.venv\Scripts\python workflow.py last_month   # 上月统计
-.venv\Scripts\python workflow.py normal       # 综合统计
+python workflow.py monday       # 强制周一统计
+python workflow.py friday       # 强制周五统计
+python workflow.py last_month   # 上月统计
+python workflow.py normal       # 综合统计
+
+# 全模式执行（运行4种模式 + 发送文件 + 更新在线表格）
+$env:FEISHU_NOTIFY_CHAT_ID="ou_xxx"; python run_all_modes.py
 ```
+
+### 全模式执行 (run_all_modes.py)
+一次运行完成以下所有操作：
+1. 依次执行 4 种统计模式（monday/friday/last_month/normal）
+2. 发送源文件和最新结果文件到飞书（文件消息）
+3. 创建/更新飞书在线表格，4 个 sheet 分别对应 4 种模式
+4. 发送在线表格链接到飞书
+
+在线表格 token 保存在 `spreadsheet_token.json`，后续运行复用同一表格。
 
 ## 定时任务配置
 - 周一 09:00 执行 `workflow.py`（自动走 monday 模式）
@@ -98,9 +113,16 @@ cd D:\AutoWorkSkill\cronJob\weekDataCount
 - 月初可手动执行 `workflow.py last_month` 统计上月数据
 
 ## 前置依赖
-- Python 3.12（虚拟环境：.venv）
+- Python 3.12（系统环境）
 - Google Chrome 已安装
 - 依赖包：selenium, webdriver-manager, pandas, openpyxl
+
+## 飞书在线表格
+- 第一次运行 `run_all_modes.py` 会自动创建在线表格
+- 表格 token 保存在 `spreadsheet_token.json`，后续运行复用
+- 4 个 sheet：周一统计、周五统计、上月统计、综合统计
+- 每次运行会覆盖写入最新数据
+- 需要环境变量 `FEISHU_NOTIFY_CHAT_ID`（open_id 或 chat_id）
 
 ## 注意事项
 - 需要有桌面环境（Chrome 以非 headless 模式运行）

@@ -10,6 +10,21 @@ RESULT_DIR = os.path.join(BASE_DIR, 'result')
 os.makedirs(RESULT_DIR, exist_ok=True)
 
 
+def _write_total_row(ws, row, data_start, data_end, thin_border):
+    """写合计行，用静态值（从上方单元格求和）"""
+    total_b = sum(ws.cell(row=r, column=2).value or 0 for r in range(data_start, data_end + 1))
+    total_c = sum(ws.cell(row=r, column=3).value or 0 for r in range(data_start, data_end + 1))
+    ws.cell(row=row, column=1, value="合计").font = Font(bold=True)
+    ws.cell(row=row, column=1).border = thin_border
+    ws.cell(row=row, column=2, value=total_b)
+    ws.cell(row=row, column=2).border = thin_border
+    ws.cell(row=row, column=2).font = Font(bold=True)
+    ws.cell(row=row, column=3, value=round(total_c, 2))
+    ws.cell(row=row, column=3).border = thin_border
+    ws.cell(row=row, column=3).font = Font(bold=True)
+    ws.cell(row=row, column=3).number_format = '#,##0.00'
+
+
 def zone_stats(data):
     """按专区名称统计，按订单号去重"""
     zones = {}
@@ -42,7 +57,7 @@ def export_friday_xlsx(result):
     ws.title = "周五统计"
 
     # 样式
-    title_font = Font(bold=True, size=13)
+    title_font = Font(bold=True, size=18)
     header_font = Font(bold=True, size=11)
     thin_border = Border(
         left=Side(style='thin'), right=Side(style='thin'),
@@ -85,21 +100,21 @@ def export_friday_xlsx(result):
             c.font = header_font
             c.border = thin_border
         row += 1
+        data_start = row
         for stype, s in supplier.items():
             row = write_row(row, stype, s["order_count"], s["total_amount"])
-        s_total_count = sum(s["order_count"] for s in supplier.values())
-        s_total_amount = round(sum(s["total_amount"] for s in supplier.values()), 2)
-        row = write_row(row, "合计", s_total_count, s_total_amount, bold=True)
+        data_end = row - 1
+        _write_total_row(ws, row, data_start, data_end, thin_border)
         row += 1
 
         # 专区表
         row = write_header(row)
         zone_items = {k: v for k, v in zones.items() if isinstance(v, dict) and k != "supplier"}
+        data_start = row
         for zone, s in zone_items.items():
             row = write_row(row, zone, s["order_count"], s["total_amount"])
-        total_count = sum(s["order_count"] for s in zone_items.values())
-        total_amount = round(sum(s["total_amount"] for s in zone_items.values()), 2)
-        row = write_row(row, "合计", total_count, total_amount, bold=True)
+        data_end = row - 1
+        _write_total_row(ws, row, data_start, data_end, thin_border)
         return row + 1
 
     row = 1
@@ -119,6 +134,7 @@ def export_friday_xlsx(result):
 
     wb.save(xlsx_path)
     print(f"Excel已保存: {xlsx_path}")
+    return xlsx_path
 
 
 def export_monday_xlsx(result):
@@ -130,7 +146,7 @@ def export_monday_xlsx(result):
     ws = wb.active
     ws.title = "订单统计"
 
-    title_font = Font(bold=True, size=13)
+    title_font = Font(bold=True, size=18)
     header_font = Font(bold=True, size=11)
     thin_border = Border(
         left=Side(style='thin'), right=Side(style='thin'),
@@ -170,15 +186,7 @@ def export_monday_xlsx(result):
             row = write_row(row, zone, s["order_count"], s["total_amount"])
         data_end = row - 1
         # 合计行用SUM公式
-        ws.cell(row=row, column=1, value="合计").font = Font(bold=True)
-        ws.cell(row=row, column=1).border = thin_border
-        ws.cell(row=row, column=2, value=f"=SUM(B{data_start}:B{data_end})")
-        ws.cell(row=row, column=2).border = thin_border
-        ws.cell(row=row, column=2).font = Font(bold=True)
-        ws.cell(row=row, column=3, value=f"=SUM(C{data_start}:C{data_end})")
-        ws.cell(row=row, column=3).border = thin_border
-        ws.cell(row=row, column=3).font = Font(bold=True)
-        ws.cell(row=row, column=3).number_format = '#,##0.00'
+        _write_total_row(ws, row, data_start, data_end, thin_border)
         return row + 2  # +1 for next row, +1 for empty row
 
     row = 1
@@ -202,11 +210,11 @@ def export_monday_xlsx(result):
             c.font = header_font
             c.border = thin_border
         row += 1
+        data_start = row
         for stype, s in t["supplier"].items():
             row = write_row(row, stype, s["order_count"], s["total_amount"])
-        s_total_count = sum(s["order_count"] for s in t["supplier"].values())
-        s_total_amount = round(sum(s["total_amount"] for s in t["supplier"].values()), 2)
-        row = write_row(row, "合计", s_total_count, s_total_amount, bold=True)
+        data_end = row - 1
+        _write_total_row(ws, row, data_start, data_end, thin_border)
         row += 1
 
         # 专区表
@@ -215,15 +223,7 @@ def export_monday_xlsx(result):
         for zone, s in t["zones"].items():
             row = write_row(row, zone, s["order_count"], s["total_amount"])
         data_end = row - 1
-        ws.cell(row=row, column=1, value="合计").font = Font(bold=True)
-        ws.cell(row=row, column=1).border = thin_border
-        ws.cell(row=row, column=2, value=f"=SUM(B{data_start}:B{data_end})")
-        ws.cell(row=row, column=2).border = thin_border
-        ws.cell(row=row, column=2).font = Font(bold=True)
-        ws.cell(row=row, column=3, value=f"=SUM(C{data_start}:C{data_end})")
-        ws.cell(row=row, column=3).border = thin_border
-        ws.cell(row=row, column=3).font = Font(bold=True)
-        ws.cell(row=row, column=3).number_format = '#,##0.00'
+        _write_total_row(ws, row, data_start, data_end, thin_border)
         row += 2
 
     ws.column_dimensions['A'].width = 30
@@ -232,6 +232,7 @@ def export_monday_xlsx(result):
 
     wb.save(xlsx_path)
     print(f"Excel已保存: {xlsx_path}")
+    return xlsx_path
 
 
 def process_monday():
@@ -312,7 +313,7 @@ def export_last_month_xlsx(result):
     ws = wb.active
     ws.title = "上月统计"
 
-    title_font = Font(bold=True, size=13)
+    title_font = Font(bold=True, size=18)
     header_font = Font(bold=True, size=11)
     thin_border = Border(
         left=Side(style='thin'), right=Side(style='thin'),
@@ -354,11 +355,11 @@ def export_last_month_xlsx(result):
         c.font = header_font
         c.border = thin_border
     row += 1
+    data_start = row
     for stype, s in result["supplier"].items():
         row = write_row(row, stype, s["order_count"], s["total_amount"])
-    s_total_count = sum(s["order_count"] for s in result["supplier"].values())
-    s_total_amount = round(sum(s["total_amount"] for s in result["supplier"].values()), 2)
-    row = write_row(row, "合计", s_total_count, s_total_amount, bold=True)
+    data_end = row - 1
+    _write_total_row(ws, row, data_start, data_end, thin_border)
     row += 1
 
     # 专区表
@@ -367,15 +368,7 @@ def export_last_month_xlsx(result):
     for zone, s in result["zones"].items():
         row = write_row(row, zone, s["order_count"], s["total_amount"])
     data_end = row - 1
-    ws.cell(row=row, column=1, value="合计").font = Font(bold=True)
-    ws.cell(row=row, column=1).border = thin_border
-    ws.cell(row=row, column=2, value=f"=SUM(B{data_start}:B{data_end})")
-    ws.cell(row=row, column=2).border = thin_border
-    ws.cell(row=row, column=2).font = Font(bold=True)
-    ws.cell(row=row, column=3, value=f"=SUM(C{data_start}:C{data_end})")
-    ws.cell(row=row, column=3).border = thin_border
-    ws.cell(row=row, column=3).font = Font(bold=True)
-    ws.cell(row=row, column=3).number_format = '#,##0.00'
+    _write_total_row(ws, row, data_start, data_end, thin_border)
 
     ws.column_dimensions['A'].width = 30
     ws.column_dimensions['B'].width = 12
@@ -383,6 +376,7 @@ def export_last_month_xlsx(result):
 
     wb.save(xlsx_path)
     print(f"Excel已保存: {xlsx_path}")
+    return xlsx_path
 
 
 def export_normal_xlsx(result):
@@ -393,7 +387,7 @@ def export_normal_xlsx(result):
     ws = wb.active
     ws.title = "综合统计"
 
-    title_font = Font(bold=True, size=13)
+    title_font = Font(bold=True, size=18)
     header_font = Font(bold=True, size=11)
     thin_border = Border(
         left=Side(style='thin'), right=Side(style='thin'),
@@ -435,11 +429,11 @@ def export_normal_xlsx(result):
             c.font = header_font
             c.border = thin_border
         row += 1
+        data_start = row
         for stype, s in supplier.items():
             row = write_row(row, stype, s["order_count"], s["total_amount"])
-        s_total_count = sum(s["order_count"] for s in supplier.values())
-        s_total_amount = round(sum(s["total_amount"] for s in supplier.values()), 2)
-        row = write_row(row, "合计", s_total_count, s_total_amount, bold=True)
+        data_end = row - 1
+        _write_total_row(ws, row, data_start, data_end, thin_border)
         row += 1
 
         # 专区表
@@ -448,15 +442,7 @@ def export_normal_xlsx(result):
         for zone, s in zones.items():
             row = write_row(row, zone, s["order_count"], s["total_amount"])
         data_end = row - 1
-        ws.cell(row=row, column=1, value="合计").font = Font(bold=True)
-        ws.cell(row=row, column=1).border = thin_border
-        ws.cell(row=row, column=2, value=f"=SUM(B{data_start}:B{data_end})")
-        ws.cell(row=row, column=2).border = thin_border
-        ws.cell(row=row, column=2).font = Font(bold=True)
-        ws.cell(row=row, column=3, value=f"=SUM(C{data_start}:C{data_end})")
-        ws.cell(row=row, column=3).border = thin_border
-        ws.cell(row=row, column=3).font = Font(bold=True)
-        ws.cell(row=row, column=3).number_format = '#,##0.00'
+        _write_total_row(ws, row, data_start, data_end, thin_border)
         return row + 2
 
     row = 1
@@ -477,6 +463,7 @@ def export_normal_xlsx(result):
 
     wb.save(xlsx_path)
     print(f"Excel已保存: {xlsx_path}")
+    return xlsx_path
 
 
 def process_last_month():
@@ -608,11 +595,12 @@ def process_friday():
     current_year = today.year
     current_month = today.month
 
-    # 本周（上周五到本周四）
-    days_since_friday = (today.weekday() - 4) % 7
-    this_friday = today - timedelta(days=days_since_friday)
-    last_friday = this_friday - timedelta(days=7)
-    week_mask = (df['订单日期'] >= last_friday) & (df['订单日期'] < this_friday)
+    now = datetime.now()
+
+    # 本周（本周一 00:00 ~ 当前执行时间）
+    days_since_monday = today.weekday()
+    this_monday = today - timedelta(days=days_since_monday)
+    week_mask = (df['订单日期'] >= this_monday) & (df['订单日期'] <= now)
     week_data = df[week_mask]
 
     # 本月
@@ -622,14 +610,14 @@ def process_friday():
     result = {
         "type": "friday",
         "current_week": {
-            "range": f"{last_friday.strftime('%Y-%m-%d')} ~ {(this_friday - timedelta(days=1)).strftime('%Y-%m-%d')}",
+            "range": f"{this_monday.strftime('%Y-%m-%d')} ~ {now.strftime('%Y-%m-%d %H:%M')}",
             "order_count": int(week_data['订单号'].nunique()),
             "total_amount": round(float(week_data['订单金额（元）'].sum()), 2),
             "supplier": supplier_stats(week_data),
         },
         "zones": {
             "current_week": {
-                "range": f"{last_friday.strftime('%Y-%m-%d')} ~ {(this_friday - timedelta(days=1)).strftime('%Y-%m-%d')}",
+                "range": f"{this_monday.strftime('%Y-%m-%d')} ~ {now.strftime('%Y-%m-%d %H:%M')}",
                 "supplier": supplier_stats(week_data),
                 **zone_stats(week_data)
             },

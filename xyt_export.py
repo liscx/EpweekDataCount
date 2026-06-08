@@ -11,8 +11,16 @@ from webdriver_manager.chrome import ChromeDriverManager
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOWNLOAD_DIR = os.path.join(BASE_DIR, 'Data')
 
-# 直接使用本地已有的chromedriver，避免访问Google服务器被阻断
-driver_path = r'C:\Users\32300\.wdm\drivers\chromedriver\win64\147.0.7727.117\chromedriver-win32\chromedriver.exe'
+# 先用硬编码的本地路径，不存在再下载
+LOCAL_DRIVER = r"C:\Users\Epoint\.wdm\drivers\chromedriver\win64\148.0.7778.168\chromedriver-win32\chromedriver.exe"
+if os.path.exists(LOCAL_DRIVER):
+    driver_path = LOCAL_DRIVER
+else:
+    os.environ["WDM_SSL_VERIFY"] = "0"
+    try:
+        driver_path = ChromeDriverManager().install()
+    except Exception:
+        raise FileNotFoundError(f"本地chromedriver不存在且下载失败: {LOCAL_DRIVER}")
 
 
 def wait_for_download(download_dir, existing_files, timeout=180):
@@ -30,6 +38,7 @@ def wait_for_download(download_dir, existing_files, timeout=180):
 
 def main():
     chrome_options = webdriver.ChromeOptions()
+    chrome_options.add_argument("--start-maximized")
     prefs = {
         "download.default_directory": DOWNLOAD_DIR,
         "download.prompt_for_download": False,
