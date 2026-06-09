@@ -114,8 +114,9 @@ $env:FEISHU_NOTIFY_CHAT_ID="ou_xxx"; python run_all_modes.py
 
 ## 前置依赖
 - Python 3.12（系统环境）
-- Google Chrome 已安装
-- 依赖包：selenium, webdriver-manager, pandas, openpyxl
+- Chromium 浏览器（Playwright 自动管理）
+- 依赖包：playwright, pandas, openpyxl
+- 首次使用需安装浏览器：`playwright install chromium`
 
 ## 飞书在线表格
 - 第一次运行 `run_all_modes.py` 会自动创建在线表格
@@ -125,9 +126,11 @@ $env:FEISHU_NOTIFY_CHAT_ID="ou_xxx"; python run_all_modes.py
 - 需要环境变量 `FEISHU_NOTIFY_CHAT_ID`（open_id 或 chat_id）
 
 ## 注意事项
-- 需要有桌面环境（Chrome 以非 headless 模式运行）
-- 浏览器最大化打开，默认缩放 75%
+- 需要有桌面环境（Chromium 以非 headless 模式运行）
+- 浏览器窗口 1920x1080，默认缩放 75%
 - 登录账号已内置在 xyt_export.py 中
-- ChromeDriver 自动管理，优先使用本地缓存
+- Chromium 浏览器由 Playwright 自动管理
+- 首次使用需运行 `playwright install chromium` 安装浏览器
 - 一个订单可能包含多个商品（多行），统计时按订单号去重
 - 超时统一 180s，所有等待均为自适应检测
+- 统计时间基于**订单创建时间**字段（而非订单日期）

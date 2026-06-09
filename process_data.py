@@ -238,21 +238,21 @@ def export_monday_xlsx(result):
 def process_monday():
     """周一统计：上周、本月、总计（分专区）"""
     df = pd.read_excel(SOURCE_FILE)
-    df['订单日期'] = pd.to_datetime(df['订单日期'])
+    df['订单创建时间'] = pd.to_datetime(df['订单创建时间'])
 
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     current_year = today.year
     current_month = today.month
 
     # 本月
-    month_mask = (df['订单日期'].dt.year == current_year) & (df['订单日期'].dt.month == current_month)
+    month_mask = (df['订单创建时间'].dt.year == current_year) & (df['订单创建时间'].dt.month == current_month)
     month_data = df[month_mask]
 
     # 上周（周一到周日）
     days_since_monday = today.weekday()
     this_monday = today - timedelta(days=days_since_monday)
     last_monday = this_monday - timedelta(days=7)
-    last_week_mask = (df['订单日期'] >= last_monday) & (df['订单日期'] < this_monday)
+    last_week_mask = (df['订单创建时间'] >= last_monday) & (df['订单创建时间'] < this_monday)
     last_week_data = df[last_week_mask]
 
     result = {
@@ -469,7 +469,7 @@ def export_normal_xlsx(result):
 def process_last_month():
     """上月统计：分供应商类型 + 分专区"""
     df = pd.read_excel(SOURCE_FILE)
-    df['订单日期'] = pd.to_datetime(df['订单日期'])
+    df['订单创建时间'] = pd.to_datetime(df['订单创建时间'])
 
     today = datetime.now()
     # 上个月：如果当前是1月，上个月是去年12月
@@ -478,7 +478,7 @@ def process_last_month():
     else:
         last_year, last_month = today.year, today.month - 1
 
-    mask = (df['订单日期'].dt.year == last_year) & (df['订单日期'].dt.month == last_month)
+    mask = (df['订单创建时间'].dt.year == last_year) & (df['订单创建时间'].dt.month == last_month)
     month_data = df[mask]
 
     result = {
@@ -506,7 +506,7 @@ def process_last_month():
 def process_normal():
     """综合统计：上周、本周、上月、本月、全量（均分供应商类型+分专区）"""
     df = pd.read_excel(SOURCE_FILE)
-    df['订单日期'] = pd.to_datetime(df['订单日期'])
+    df['订单创建时间'] = pd.to_datetime(df['订单创建时间'])
 
     now = datetime.now()
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -514,7 +514,7 @@ def process_normal():
     current_month = today.month
 
     # 本月
-    month_mask = (df['订单日期'].dt.year == current_year) & (df['订单日期'].dt.month == current_month)
+    month_mask = (df['订单创建时间'].dt.year == current_year) & (df['订单创建时间'].dt.month == current_month)
     month_data = df[month_mask]
 
     # 上月
@@ -522,18 +522,18 @@ def process_normal():
         last_year, last_month = current_year - 1, 12
     else:
         last_year, last_month = current_year, current_month - 1
-    last_month_mask = (df['订单日期'].dt.year == last_year) & (df['订单日期'].dt.month == last_month)
+    last_month_mask = (df['订单创建时间'].dt.year == last_year) & (df['订单创建时间'].dt.month == last_month)
     last_month_data = df[last_month_mask]
 
     # 上周（上周一 ~ 上周日，完整7天）
     days_since_monday = today.weekday()
     this_monday = today - timedelta(days=days_since_monday)
     last_monday = this_monday - timedelta(days=7)
-    last_week_mask = (df['订单日期'] >= last_monday) & (df['订单日期'] < this_monday)
+    last_week_mask = (df['订单创建时间'] >= last_monday) & (df['订单创建时间'] < this_monday)
     last_week_data = df[last_week_mask]
 
     # 本周（本周一 ~ 当前时刻，精确到秒）
-    current_week_mask = (df['订单日期'] >= this_monday) & (df['订单日期'] <= now)
+    current_week_mask = (df['订单创建时间'] >= this_monday) & (df['订单创建时间'] <= now)
     current_week_data = df[current_week_mask]
 
     result = {
@@ -589,7 +589,7 @@ def process_normal():
 def process_friday():
     """周五统计：本周汇总+供应商类型，分专区（本周/本月/全量）"""
     df = pd.read_excel(SOURCE_FILE)
-    df['订单日期'] = pd.to_datetime(df['订单日期'])
+    df['订单创建时间'] = pd.to_datetime(df['订单创建时间'])
 
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     current_year = today.year
@@ -600,11 +600,11 @@ def process_friday():
     # 本周（本周一 00:00 ~ 当前执行时间）
     days_since_monday = today.weekday()
     this_monday = today - timedelta(days=days_since_monday)
-    week_mask = (df['订单日期'] >= this_monday) & (df['订单日期'] <= now)
+    week_mask = (df['订单创建时间'] >= this_monday) & (df['订单创建时间'] <= now)
     week_data = df[week_mask]
 
     # 本月
-    month_mask = (df['订单日期'].dt.year == current_year) & (df['订单日期'].dt.month == current_month)
+    month_mask = (df['订单创建时间'].dt.year == current_year) & (df['订单创建时间'].dt.month == current_month)
     month_data = df[month_mask]
 
     result = {
