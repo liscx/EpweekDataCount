@@ -8,9 +8,13 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
+from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_FILE = os.path.join(BASE_DIR, 'config.yaml')
+ENV_FILE = os.path.join(BASE_DIR, '.env')
+
+load_dotenv(ENV_FILE)
 
 
 def send_email(xlsx_path, result):
@@ -26,7 +30,7 @@ def send_email(xlsx_path, result):
     smtp_host = email_cfg.get("smtp_host", "smtp.qq.com")
     smtp_port = int(email_cfg.get("smtp_port", 465))
     smtp_user = email_cfg.get("smtp_user", "")
-    smtp_pass = email_cfg.get("smtp_pass", "")
+    smtp_pass = os.environ.get("SMTP_PASS", "")
     to_list = email_cfg.get("to", [])
 
     if not all([smtp_user, smtp_pass, to_list]):

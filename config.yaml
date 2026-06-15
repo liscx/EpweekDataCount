@@ -3,7 +3,7 @@ email:
   smtp_host: smtp.qq.com
   smtp_port: 465
   smtp_user: "liscxz8231128@qq.com"       # 发件人邮箱
-  smtp_pass: "aafcgoytthqtchej"       # 授权码
+  # smtp_pass 从 .env 文件读取 SMTP_PASS
   to:                 # 收件人列表
     - "lx626159@163.com"
 #    - "631115784@qq.com"
