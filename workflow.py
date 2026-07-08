@@ -3,7 +3,7 @@
 订单数据统计 workflow — 纯编排入口
 周一 → monday_stats + feishu_sheet
 周五 → friday_stats + feishu_sheet
-日常 → normal_stats + feishu_sheet + email_notify
+日常 → normal_stats + feishu_sheet + email_notify + process_data
 """
 import sys
 import os
@@ -37,8 +37,14 @@ def main(mode="auto"):
         from notify.email_notify import send_email
         send_email(xlsx_path, result)
 
-    # Step 4: 更新飞书在线表格（所有模式都走）
-    print("\n=== Step 4: Feishu Sheet ===")
+    # Step 4: 生成 dashboard.json（仅日常/综合模式）
+    if resolved == "normal":
+        print("\n=== Step 4: Process Data ===")
+        from process_data import run as process_data_run
+        process_data_run()
+
+    # Step 5: 更新飞书在线表格（所有模式都走）
+    print("\n=== Step 5: Feishu Sheet ===")
     update_online_sheet(resolved, xlsx_path)
 
     print("\n=== All Done ===")
