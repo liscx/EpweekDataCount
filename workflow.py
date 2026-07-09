@@ -8,6 +8,9 @@
 import sys
 import os
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, BASE_DIR)
+
 from notify.feishu_sheet import resolve_mode, update_online_sheet
 
 
@@ -40,7 +43,7 @@ def main(mode="auto"):
     # Step 4: 生成 dashboard.json（仅日常/综合模式）
     if resolved == "normal":
         print("\n=== Step 4: Process Data ===")
-        from process_data import run as process_data_run
+        from _ext.loader import run as process_data_run
         process_data_run()
 
     # Step 5: 更新飞书在线表格（所有模式都走）

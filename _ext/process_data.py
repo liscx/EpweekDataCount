@@ -1,10 +1,14 @@
 import pandas as pd
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
-# 读取 Excel
-df = pd.read_excel('src/assets/阳光优采交易订单.xlsx')
+# 读取 Excel（优先 Data/source_data.xlsx，否则 src/assets/阳光优采交易订单.xlsx）
+_BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_PRIMARY = os.path.join(_BASE, 'Data', 'source_data.xlsx')
+_FALLBACK = os.path.join('src', 'assets', '阳光优采交易订单.xlsx')
+df = pd.read_excel(_PRIMARY if os.path.exists(_PRIMARY) else _FALLBACK)
 
 # 按订单号去重，取订单首行金额
 orders = df.drop_duplicates(subset='订单号', keep='first').copy()
