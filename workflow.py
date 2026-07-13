@@ -22,6 +22,11 @@ def main(mode="auto"):
     from xyt_export import main as login_export
     login_export()
 
+    # Step 1.5: 过滤测试数据
+    print("\n=== Step 1.5: Filter Test Data ===")
+    from filter_test_data import filter_test_data
+    filter_test_data()
+
     # Step 2: 按模式执行统计
     print(f"\n=== Step 2: Data Processing ({resolved}) ===")
     if resolved == "monday":
