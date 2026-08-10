@@ -8,6 +8,7 @@ MODE_SHEET_MAP = {
     "friday": ("周五统计", "F"),
     "last_month": ("上月统计", "LM"),
     "normal": ("综合统计", "NM"),
+    "gys_count": ("供应商统计", "GYS"),
 }
 
 

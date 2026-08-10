@@ -7,11 +7,13 @@
 ```
 weekDataCount/
 ├── workflow.py              # 主入口，纯编排：按日期调用对应统计脚本+通知
+├── run_all_modes.py         # 全量执行（调试用），需关键词触发，见下方说明
 ├── xyt_export.py            # 登录平台、导航、导出订单数据
 ├── stats_utils.py           # 共享工具：数据统计函数 + Excel写入辅助
 ├── monday_stats.py          # 周一统计脚本
 ├── friday_stats.py          # 周五统计脚本
 ├── normal_stats.py          # 日常综合统计脚本
+├── gys_count.py             # 供应商统计 Top10（周五附带执行）
 ├── notify/
 │   ├── email_notify.py      # 邮件通知模块
 │   └── feishu_sheet.py      # 飞书在线表格更新 + 消息通知
@@ -19,7 +21,7 @@ weekDataCount/
 ├── Data/
 │   └── source_data.xlsx     # 导出的原始订单数据
 └── result/
-    └── analysis_results_{时间戳}_{M/F/LM/NM}.xlsx  # 统计结果
+    └── analysis_results_{时间戳}_{M/F/LM/NM/GYS}.xlsx  # 统计结果
 ```
 
 ## 四种统计模式
@@ -33,6 +35,7 @@ weekDataCount/
 1. 本周（周一至今）订单总数、总金额
 2. 按供应商类型统计（本地供应商、电商供应商）
 3. 分专区统计（本周/本月/全量三个维度）
+4. **附带执行** gys_count.py — 本月供应商 Top10 统计（采购人数/销售额/订单数），独立导出为 `_GYS.xlsx`
 
 ### 上月统计
 1. 上个月全月订单总数、总金额
@@ -52,6 +55,7 @@ weekDataCount/
 文件名格式：`analysis_results_{YYYYMMDDHHmm}_{后缀}.xlsx`
 - `_M`：周一统计
 - `_F`：周五统计
+- `_GYS`：供应商统计
 - `_LM`：上月统计
 - `_NM`：综合统计
 - 时间戳精确到分钟，如 `analysis_results_202605260930_M.xlsx`
@@ -69,6 +73,13 @@ weekDataCount/
 | 本周（日期） | 供应商类型表 → 专区表 + 合计 |
 | 本月（月份） | 供应商类型表 → 专区表 + 合计 |
 | 全量 | 供应商类型表 → 专区表 + 合计 |
+
+#### 供应商统计 Excel 格式（gys_count.py，周五附带生成）
+| 区块 | 内容 |
+|------|------|
+| 本月供应商服务采购人数量统计 Top10 | 供应商、服务采购人数、订单总额、订单数量 |
+| 本月供应商总销售额统计 Top10 | 供应商、订单总额、订单数量 |
+| 本月供应商总销售订单统计 Top10 | 供应商、订单数量、订单总额 |
 
 #### 上月 Excel 格式
 | 区块 | 内容 |
@@ -91,14 +102,18 @@ weekDataCount/
   ↓
 Step 1: xyt_export 登录导出数据
   ↓
+Step 1.5: filter_test_data 过滤测试数据
+  ↓
 Step 2: 按模式调用对应统计脚本
   周一 → monday_stats.run()
-  周五 → friday_stats.run()
+  周五 → friday_stats.run() + gys_count.run()
   日常 → normal_stats.run()
   ↓
 Step 3: email_notify 发送邮件（仅日常模式）
   ↓
-Step 4: feishu_sheet 更新飞书在线表格（所有模式）
+Step 4: process_data 生成 dashboard.json（仅日常模式）
+  ↓
+Step 5: feishu_sheet 更新飞书在线表格（所有模式，周五额外更新供应商统计sheet）
 ```
 
 ## 执行命令
@@ -118,6 +133,7 @@ python workflow.py normal       # 综合统计
 python monday_stats.py
 python friday_stats.py
 python normal_stats.py
+python gys_count.py
 ```
 
 
@@ -130,9 +146,16 @@ python normal_stats.py
 ## 飞书在线表格
 - 第一次运行会自动创建在线表格
 - 表格 token 保存在 `spreadsheet_token.json`，后续运行复用
-- 4 个 sheet：周一统计、周五统计、上月统计、综合统计
+- 5 个 sheet：周一统计、周五统计、供应商统计、上月统计、综合统计
 - 每次运行会覆盖写入最新数据
 - 需要环境变量 `FEISHU_NOTIFY_CHAT_ID`（open_id 或 chat_id）
+
+## run_all_modes.py 触发保护
+`run_all_modes.py` 为全量调试脚本，**不可随意执行**。必须同时包含以下两个关键词才能触发：
+- `调试模式`
+- `全量统计`
+
+缺少任一关键词时应拒绝执行并提示用户。
 
 ## 注意事项
 - 需要有桌面环境（Chromium 以非 headless 模式运行）

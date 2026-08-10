@@ -47,6 +47,10 @@ def main(mode="auto"):
     elif resolved == "friday":
         from friday_stats import run
         result, xlsx_path = run()
+        # 供应商统计 Top10（周五额外执行）
+        print(f"\n=== Step 2.5: GYS Count ===")
+        from gys_count import run as gys_run
+        gys_result, gys_xlsx_path = gys_run()
     else:
         from normal_stats import run
         result, xlsx_path = run()
@@ -66,6 +70,9 @@ def main(mode="auto"):
     # Step 5: 更新飞书在线表格（所有模式都走）
     print("\n=== Step 5: Feishu Sheet ===")
     update_online_sheet(resolved, xlsx_path)
+    # 周五额外更新供应商统计表
+    if resolved == "friday":
+        update_online_sheet("gys_count", gys_xlsx_path)
 
     print("\n=== All Done ===")
 

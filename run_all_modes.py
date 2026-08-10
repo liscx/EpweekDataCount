@@ -18,6 +18,7 @@ sys.path.insert(0, BASE_DIR)
 from monday_stats import run as monday_run
 from friday_stats import run as friday_run
 from normal_stats import run as normal_run
+from gys_count import run as gys_run
 from feishu_notify import _load_env, _get_tenant_token, send_text
 from stats_utils import (
     zone_stats, supplier_stats,
@@ -75,6 +76,7 @@ def last_month_run():
 MODES = [
     ("monday", "周一统计"),
     ("friday", "周五统计"),
+    ("gys_count", "供应商统计"),
     ("last_month", "上月统计"),
     ("normal", "综合统计"),
 ]
@@ -273,13 +275,13 @@ def write_excel_to_sheet_formatted(token, ss_token, sheet_id, excel_path, mode):
     wb = openpyxl.load_workbook(excel_path)  # 保留公式
     ws = wb.active
 
-    ncols = 3
+    ncols = ws.max_column or 3
     end_col = col_letter(ncols)
 
-    # 设置列宽
-    set_column_width(token, ss_token, sheet_id, 1, 2, 240)
-    set_column_width(token, ss_token, sheet_id, 2, 3, 130)
-    set_column_width(token, ss_token, sheet_id, 3, 4, 170)
+    # 设置列宽（按实际列数）
+    col_widths = [240, 130, 170, 130]  # A~D
+    for i in range(min(ncols, len(col_widths))):
+        set_column_width(token, ss_token, sheet_id, i + 1, i + 2, col_widths[i])
 
     # 读取原始 Excel 数据
     all_rows = []
@@ -362,7 +364,7 @@ def write_excel_to_sheet_formatted(token, ss_token, sheet_id, excel_path, mode):
             continue
 
         # 表头行
-        if first_cell in ("专区", "供应商类型"):
+        if first_cell in ("专区", "供应商类型", "供应商"):
             header_ranges.append(r)
             continue
 
@@ -384,7 +386,7 @@ def write_excel_to_sheet_formatted(token, ss_token, sheet_id, excel_path, mode):
         apply_style(token, ss_token, f"{sheet_id}!A{r}:{end_col}{r}", STYLE_TOTAL)
     # 数据行：整行应用数据样式，金额列额外应用数字格式
     for r in data_col_b:
-        apply_style(token, ss_token, f"{sheet_id}!A{r}:B{r}", STYLE_DATA)
+        apply_style(token, ss_token, f"{sheet_id}!A{r}:{end_col}{r}", STYLE_DATA)
     for r in data_col_c:
         apply_style(token, ss_token, f"{sheet_id}!C{r}:C{r}", STYLE_AMOUNT)
 
@@ -506,6 +508,8 @@ def main():
                 result, _ = monday_run()
             elif mode == "friday":
                 result, _ = friday_run()
+            elif mode == "gys_count":
+                result, _ = gys_run()
             elif mode == "last_month":
                 result, _ = last_month_run()
             else:
@@ -525,7 +529,7 @@ def main():
         send_file_to_feishu(SOURCE_FILE, "源数据文件", CHAT_ID)
 
     # 只发送最新4个结果文件
-    suffix_map = {"monday": "M", "friday": "F", "last_month": "LM", "normal": "NM"}
+    suffix_map = {"monday": "M", "friday": "F", "gys_count": "GYS", "last_month": "LM", "normal": "NM"}
     latest_files = []
     for mode, label in MODES:
         suffix = suffix_map[mode]

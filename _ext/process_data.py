@@ -1,6 +1,7 @@
+import os
 import pandas as pd
 import json
-import os
+import calendar
 from datetime import datetime
 from pathlib import Path
 
@@ -15,7 +16,11 @@ orders = df.drop_duplicates(subset='订单号', keep='first').copy()
 
 # 基础时间
 now = datetime.now()
-data_end_date = orders['订单创建时间'].max()[:10] if len(orders) > 0 else now.strftime('%Y-%m-%d')
+data_end_date = (
+    pd.to_datetime(orders['订单创建时间']).max().strftime('%Y-%m-%d')
+    if len(orders) > 0
+    else now.strftime('%Y-%m-%d')
+)
 
 # ============ KPI 指标 ============
 total_amount = round(orders['订单金额（元）'].sum(), 2)
@@ -53,7 +58,6 @@ if len(orders) > 0:
     else:
         prev_month = max_date.month - 1
         prev_year = max_date.year
-    import calendar
     max_day_in_prev = calendar.monthrange(prev_year, prev_month)[1]
     prev_month_end_day = min(prev_month_end_day, max_day_in_prev)
     prev_month_start = max_date.replace(year=prev_year, month=prev_month, day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -139,29 +143,81 @@ if len(orders) > 0:
 
     # 保存专区列表到全局数据
     month_trend_zones = zones_sorted
+
+    # ============ 订单日历数据（按天汇总 - 覆盖全部历史数据） ============
+    daily_summary = orders.groupby(orders['日期'].dt.strftime('%Y-%m-%d')).agg(
+        amount=('订单金额（元）', 'sum'),
+        count=('订单号', 'count')
+    ).reset_index()
+    calendar_data_list = [
+        [row['日期'], round(row['amount'], 2), int(row['count'])]
+        for _, row in daily_summary.iterrows()
+    ]
+
+
+    # ============ 本月新上量专区（基于所有历史数据） ============
+    # 获取本月有订单的专区
+    current_month_zones = orders[orders['日期'] >= cur_month_start]['专区名称'].unique()
+
+    # 获取本月之前有订单的专区（所有历史数据）
+    zones_with_history = orders[orders['日期'] < cur_month_start]['专区名称'].unique()
+
+    # 筛选新上量专区：本月有订单，但之前没有任何历史订单
+    new_zones_list = []
+    for zone_name in current_month_zones:
+        if zone_name not in zones_with_history:
+            # 获取该专区本月的订单金额
+            zone_amount = orders[(orders['专区名称'] == zone_name) & (orders['日期'] >= cur_month_start)]['订单金额（元）'].sum()
+            new_zones_list.append({
+                'name': zone_name,
+                'amount': round(zone_amount, 2)
+            })
+
+    new_zones_list.sort(key=lambda x: x['amount'], reverse=True)
 else:
     month_trend_list = []
     month_trend_zones = []
+    calendar_data_list = []
+    new_zones_list = []
 
-# ============ 近一周趋势 ============
+# ============ 近一周趋势（按专区拆分） ============
 if len(orders) > 0:
     max_date = orders['日期'].max()
     week_start = max_date - pd.Timedelta(days=6)
     week_data = orders[orders['日期'] >= week_start].copy()
     week_data['日期标签'] = week_data['日期'].dt.month.astype(str) + '/' + week_data['日期'].dt.day.astype(str)
-    week_trend = week_data.groupby('日期标签').agg(
-        count=('订单号', 'count'),
-        amount=('订单金额（元）', 'sum')
+    week_data['专区分组'] = week_data['专区名称']
+
+    # 按日期+专区汇总
+    week_zone = week_data.groupby(['日期标签', '专区分组']).agg(
+        amount=('订单金额（元）', 'sum'),
+        count=('订单号', 'count')
     ).reset_index()
-    week_trend['amount'] = week_trend['amount'].round(2)
+    week_zone['amount'] = week_zone['amount'].round(2)
+
+    # 获取所有专区（按金额排序，复用月度趋势的专区列表）
+    week_zones_sorted = week_zone.groupby('专区分组')['amount'].sum().sort_values(ascending=False).index.tolist()
+
     # 补全7天
     all_days = pd.date_range(week_start, max_date)
     all_days_labels = [f"{d.month}/{d.day}" for d in all_days]
-    week_trend = week_trend.set_index('日期标签').reindex(all_days_labels, fill_value=0).reset_index()
-    week_trend.columns = ['label', 'count', 'amount']
-    week_trend_list = week_trend.to_dict('records')
+
+    # 构建输出格式
+    week_trend_list = []
+    for day_label in all_days_labels:
+        day_zone_data = week_zone[week_zone['日期标签'] == day_label]
+        zone_dict = dict(zip(day_zone_data['专区分组'], day_zone_data['amount']))
+        item = {'label': day_label}
+        item['count'] = int(day_zone_data['count'].sum())
+        item['amount'] = round(day_zone_data['amount'].sum(), 2)
+        for zone in week_zones_sorted:
+            item[zone] = zone_dict.get(zone, 0)
+        week_trend_list.append(item)
+
+    week_trend_zones = week_zones_sorted
 else:
     week_trend_list = []
+    week_trend_zones = []
 
 # ============ 订单状态分布 ============
 status_rank = orders.groupby('订单状态').agg(
@@ -261,13 +317,16 @@ result = {
     "supplierTypes": supplier_types_list,
     "monthTrend": month_trend_list,
     "monthTrendZones": month_trend_zones,
+    "calendarData": calendar_data_list,
     "weekTrend": week_trend_list,
+    "weekTrendZones": week_trend_zones,
     "statusRank": status_rank_list,
     "amountBands": amount_bands_list,
     "buyerRank": buyer_rank_list,
     "supplierRank": supplier_rank_list,
     "ecommerceSuppliers": ecommerce_suppliers_list,
-    "localSuppliers": local_suppliers_list
+    "localSuppliers": local_suppliers_list,
+    "newZones": new_zones_list
 }
 
 # 保存到 JSON
