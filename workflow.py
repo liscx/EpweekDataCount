@@ -17,10 +17,22 @@ from notify.feishu_sheet import resolve_mode, update_online_sheet
 def main(mode="auto"):
     resolved = resolve_mode(mode)
 
-    # Step 1: 登录导出数据
+    # Step 1: 登录导出数据（失败重试最多2次，都失败则停止）
     print("=== Step 1: Login & Export ===")
     from xyt_export import main as login_export
-    login_export()
+    max_retries = 2
+    for attempt in range(max_retries + 1):
+        try:
+            login_export()
+            break  # 成功，跳出重试循环
+        except Exception as e:
+            if attempt < max_retries:
+                print(f"[RETRY] 数据导出失败（第{attempt+1}次），正在重试...")
+                print(f"[RETRY] 错误: {e}")
+            else:
+                print(f"[FATAL] 数据导出连续失败{max_retries+1}次，停止后续流程")
+                print(f"[FATAL] 最后错误: {e}")
+                sys.exit(1)
 
     # Step 1.5: 过滤测试数据
     print("\n=== Step 1.5: Filter Test Data ===")
