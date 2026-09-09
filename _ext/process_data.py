@@ -174,11 +174,37 @@ if len(orders) > 0:
             })
 
     new_zones_list.sort(key=lambda x: x['amount'], reverse=True)
+
+    # ============ 月度汇总（按月聚合所有历史订单，给订单日历卡片复制用） ============
+    # 跟 monthTrend（最近 6 个月 + 按专区拆分）不同，这里是全量历史按月汇总，
+    # 给前端的复制按钮输出「月份 / 销售额 / 订单数」三列月度小结。
+    monthly_df = orders.copy()
+    monthly_df['月份'] = monthly_df['日期'].apply(
+        lambda x: f"{x.year}-{int(x.month)}" if pd.notna(x) else ""
+    )
+    monthly_summary = monthly_df.groupby('月份').agg(
+        amount=('订单金额（元）', 'sum'),
+        count=('订单号', 'count')
+    ).reset_index()
+    monthly_summary['amount'] = monthly_summary['amount'].round(2)
+    # 过滤掉日期为空的行（orders['日期'] 列 NaN 会导致月份为 ""）
+    monthly_summary = monthly_summary[monthly_summary['月份'] != ''].copy()
+    # 月份不补 0 时字符串字典序不严格等于时间序（"2025-9" > "2025-10"），
+    # 用 to_datetime 转回时间类型后再排，保证时间顺序稳定
+    monthly_summary['_sort'] = pd.to_datetime(monthly_summary['月份'], errors='coerce')
+    monthly_summary = monthly_summary.sort_values('_sort').drop(columns=['_sort'])
+    monthly_summary_list = monthly_summary.to_dict('records')
+    # 显示用段横杠（U+2013），Excel 里更美观；排序键仍用 ASCII -
+    monthly_summary_list = [
+        {**item, '月份': item['月份'].replace('-', '–')}
+        for item in monthly_summary_list
+    ]
 else:
     month_trend_list = []
     month_trend_zones = []
     calendar_data_list = []
     new_zones_list = []
+    monthly_summary_list = []
 
 # ============ 近一周趋势（按专区拆分） ============
 if len(orders) > 0:
@@ -258,13 +284,23 @@ buyer_rank = buyer_rank.sort_values('amount', ascending=False)
 buyer_rank_list = buyer_rank.rename(columns={'采购企业': 'name'}).to_dict('records')
 
 # ============ 供应商排行 ============
-supplier_rank = orders.groupby('供应商').agg(
+# 业务约束：每个供应商只有一种类型（电商/本地）。
+# 但源数据的历史脏数据里有极个别订单被错标成另一种类型（3 笔：齐心/鑫方盛/怡亚通，
+# 是「本地供应商」标签下的小金额笔），导致按 (供应商, 供应商类型) groupby 时
+# 同供应商出现 2 行。常规处理：先给每个供应商算「主类型」(该供应商下笔数最多的类型)，
+# 错标订单按其供应商的主类型归类，保证「一个供应商 = 一行」的展示形态。
+_sup_type_count = orders.groupby(['供应商', '供应商类型'])['订单号'].count().reset_index(name='n')
+_sup_main_type = _sup_type_count.loc[_sup_type_count.groupby('供应商')['n'].idxmax()][['供应商', '供应商类型']]
+_sup_main_type = _sup_main_type.rename(columns={'供应商类型': '主类型'})
+orders_with_main = orders.merge(_sup_main_type, on='供应商', how='left')
+
+supplier_rank = orders_with_main.groupby(['供应商', '主类型']).agg(
     count=('订单号', 'count'),
     amount=('订单金额（元）', 'sum')
 ).reset_index()
 supplier_rank['amount'] = supplier_rank['amount'].round(2)
 supplier_rank = supplier_rank.sort_values('amount', ascending=False)
-supplier_rank_list = supplier_rank.rename(columns={'供应商': 'name'}).to_dict('records')
+supplier_rank_list = supplier_rank.rename(columns={'供应商': 'name', '主类型': 'type'}).to_dict('records')
 
 # ============ 电商供应商 ============
 ecommerce = orders[orders['供应商类型'] == '电商供应商']
@@ -318,6 +354,7 @@ result = {
     "monthTrend": month_trend_list,
     "monthTrendZones": month_trend_zones,
     "calendarData": calendar_data_list,
+    "monthlySummary": monthly_summary_list,
     "weekTrend": week_trend_list,
     "weekTrendZones": week_trend_zones,
     "statusRank": status_rank_list,

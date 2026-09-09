@@ -67,12 +67,12 @@ def main(mode="auto"):
         from _ext.loader import run as process_data_run
         process_data_run()
 
-    # Step 5: 更新飞书在线表格（所有模式都走）
-    print("\n=== Step 5: Feishu Sheet ===")
-    update_online_sheet(resolved, xlsx_path)
-    # 周五额外更新供应商统计表
-    if resolved == "friday":
-        update_online_sheet("gys_count", gys_xlsx_path)
+    # # Step 5: 更新飞书在线表格（所有模式都走）
+    # print("\n=== Step 5: Feishu Sheet ===")
+    # update_online_sheet(resolved, xlsx_path)
+    # # 周五额外更新供应商统计表
+    # if resolved == "friday":
+    #     update_online_sheet("gys_count", gys_xlsx_path)
 
     print("\n=== All Done ===")
 
