@@ -11,6 +11,10 @@ _PRIMARY = os.path.join(_BASE, 'Data', 'source_data.xlsx')
 _FALLBACK = os.path.join('src', 'assets', '阳光优采交易订单.xlsx')
 df = pd.read_excel(_PRIMARY if os.path.exists(_PRIMARY) else _FALLBACK)
 
+# 先剔除订单号为空的商品明细行（只有商品信息，无订单号/金额/时间），
+# 否则 drop_duplicates 会把这一堆空订单号折叠成 1 行"假订单"，总订单数多算 1 笔
+df = df[df['订单号'].notna()].copy()
+
 # 按订单号去重，取订单首行金额
 orders = df.drop_duplicates(subset='订单号', keep='first').copy()
 
