@@ -11,10 +11,6 @@ _PRIMARY = os.path.join(_BASE, 'Data', 'source_data.xlsx')
 _FALLBACK = os.path.join('src', 'assets', '阳光优采交易订单.xlsx')
 df = pd.read_excel(_PRIMARY if os.path.exists(_PRIMARY) else _FALLBACK)
 
-# 先剔除订单号为空的商品明细行（只有商品信息，无订单号/金额/时间），
-# 否则 drop_duplicates 会把这一堆空订单号折叠成 1 行"假订单"，总订单数多算 1 笔
-df = df[df['订单号'].notna()].copy()
-
 # 按订单号去重，取订单首行金额
 orders = df.drop_duplicates(subset='订单号', keep='first').copy()
 
@@ -32,43 +28,40 @@ total_orders = len(orders)
 avg_amount = round(total_amount / total_orders, 2) if total_orders > 0 else 0
 
 # 本周数据（自然周，周一到周日）
-# 注意：KPI 的「今日/本周/本月/上月同期」一律以真实日历（datetime.now()）为基准，
-# 而不是数据中最后一笔订单的日期 max_date。否则源数据停更后（如 10 月无订单），
-# max_date 停留在 9 月，「本月」会被算成 9 月，月销售额仍显示上个月的数据。
 if len(orders) > 0:
     orders['日期'] = pd.to_datetime(orders['订单创建时间'])
-    max_date = orders['日期'].max()   # 仅用于 data_end_date 等「数据截至」类展示
-    today_start = pd.Timestamp(now).normalize()  # 今天 0 点（真实日历）
-
-    # 本周一 0 点
-    week_start = today_start - pd.Timedelta(days=today_start.weekday())
+    max_date = orders['日期'].max()
+    # 获取 max_date 所在周的周一 0点
+    week_start = max_date - pd.Timedelta(days=max_date.weekday())
+    week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
     week_orders = orders[orders['日期'] >= week_start]
     week_amount = round(week_orders['订单金额（元）'].sum(), 2)
     week_count = len(week_orders)
 
     # 今日数据
+    today_start = max_date.replace(hour=0, minute=0, second=0, microsecond=0)
     today_orders = orders[orders['日期'] >= today_start]
     today_amount = round(today_orders['订单金额（元）'].sum(), 2)
     today_count = len(today_orders)
 
     # 月环比同期（本月1号到今天 vs 上月1号到上月同日）
-    cur_month_start = today_start.replace(day=1)
-    cur_month_orders = orders[(orders['日期'] >= cur_month_start) & (orders['日期'] <= today_start)]
+    cur_month_start = max_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    cur_month_orders = orders[(orders['日期'] >= cur_month_start) & (orders['日期'] <= max_date)]
     cur_month_amount = round(cur_month_orders['订单金额（元）'].sum(), 2)
     cur_month_count = len(cur_month_orders)
 
     # 上月同期截止日（处理月份跨年和月末天数问题）
-    prev_month_end_day = today_start.day
-    if today_start.month == 1:
+    prev_month_end_day = max_date.day
+    if max_date.month == 1:
         prev_month = 12
-        prev_year = today_start.year - 1
+        prev_year = max_date.year - 1
     else:
-        prev_month = today_start.month - 1
-        prev_year = today_start.year
+        prev_month = max_date.month - 1
+        prev_year = max_date.year
     max_day_in_prev = calendar.monthrange(prev_year, prev_month)[1]
     prev_month_end_day = min(prev_month_end_day, max_day_in_prev)
-    prev_month_start = today_start.replace(year=prev_year, month=prev_month, day=1, hour=0, minute=0, second=0, microsecond=0)
-    prev_month_end = today_start.replace(year=prev_year, month=prev_month, day=prev_month_end_day, hour=23, minute=59, second=59, microsecond=999999)
+    prev_month_start = max_date.replace(year=prev_year, month=prev_month, day=1, hour=0, minute=0, second=0, microsecond=0)
+    prev_month_end = max_date.replace(year=prev_year, month=prev_month, day=prev_month_end_day, hour=23, minute=59, second=59, microsecond=999999)
     prev_month_orders = orders[(orders['日期'] >= prev_month_start) & (orders['日期'] <= prev_month_end)]
     prev_month_amount = round(prev_month_orders['订单金额（元）'].sum(), 2)
 
@@ -91,6 +84,9 @@ zone_count = orders['专区名称'].nunique()
 
 # 采购企业数
 buyer_count = orders['采购企业'].nunique()
+
+# 采购人(下单个人)数
+purchaser_count = orders['采购人'].nunique()
 
 # 供应商数
 supplier_count = orders['供应商'].nunique()
@@ -329,6 +325,10 @@ local_suppliers['amount'] = local_suppliers['amount'].round(2)
 local_suppliers = local_suppliers.sort_values('amount', ascending=False)
 local_suppliers_list = local_suppliers.rename(columns={'供应商': 'name'}).to_dict('records')
 
+# 电商/本地供应商数(有订单)
+ecommerce_supplier_count = ecommerce['供应商'].nunique()
+local_supplier_count = local['供应商'].nunique()
+
 # ============ 集中度指标 ============
 buyer_top10_share = round(buyer_rank.head(10)['amount'].sum() / total_amount, 6) if total_amount > 0 else 0
 supplier_top10_share = round(supplier_rank.head(10)['amount'].sum() / total_amount, 6) if total_amount > 0 else 0
@@ -348,7 +348,10 @@ result = {
         "todayAmount": today_amount,
         "todayOrders": today_count,
         "buyerCount": buyer_count,
+        "purchaserCount": purchaser_count,
         "supplierCount": supplier_count,
+        "ecommerceSupplierCount": ecommerce_supplier_count,
+        "localSupplierCount": local_supplier_count,
         "curMonthAmount": cur_month_amount,
         "curMonthOrders": cur_month_count,
         "prevMonthAmount": prev_month_amount,
